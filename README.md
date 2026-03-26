@@ -1,1 +1,1 @@
-# niraserver-panel
+# Панель управления NiraServer.
