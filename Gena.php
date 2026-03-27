@@ -35,7 +35,7 @@ $res->free();
 if (isset($userData['status']) && $userData['status'] === 'banned') {
     // Вывод как простой текст для забаненных
     header('Content-Type: text/plain; charset=utf-8');
-    echo "#EXTINF:-1, INFO\nhttps://kirya-coder.yzz.me/zg/ban.png";
+    echo "#EXTINF:-1, INFO\n"."https://kirya-coder.yzz.me/zg/ban.png";
 
     if (defined('error_client_banned') && !empty(error_client_banned)) {
         echo error_client_banned . "\n";
