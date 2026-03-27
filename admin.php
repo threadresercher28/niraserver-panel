@@ -3,6 +3,12 @@ session_start();
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
 
+// Регенерация ID сессии для защиты от фиксации
+if (!isset($_SESSION['initialized'])) {
+    session_regenerate_id(true);
+    $_SESSION['initialized'] = true;
+}
+
 // Правильный путь к config.php (на уровень выше)
 require_once __DIR__ . '/config.php';
 
@@ -35,131 +41,156 @@ $users_table = table_users;
 $channels_table = table_stream_source;
 
 $message = $error = '';
-$csrf_token = $_SESSION['csrf_token'] ??= bin2hex(random_bytes(32));
+
+// Генерация CSRF токена
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+$csrf_token = $_SESSION['csrf_token'];
+
+// Функция проверки CSRF токена
+function validate_csrf_token($token) {
+    return isset($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $token);
+}
 
 // --- Обработка действий (каналы) ---
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['channel_action'])) {
-    $action = $_POST['channel_action'];
-    try {
-        if ($action == 'save') {
-            if (empty($_POST['channel_id']) || empty($_POST['channel_name']) || empty($_POST['stream_url'])) {
-                $error = 'Заполните обязательные поля';
-            } else {
-                $data = [
-                    $_POST['channel_id'],
-                    $_POST['channel_name'],
-                    $_POST['channel_class'],
-                    $_POST['channel_group'],
-                    $_POST['icon_url'],
-                    $_POST['stream_url']
-                ];
-                if (!empty($_POST['id'])) {
-                    // Обновление
-                    $stmt = $pdo->prepare("UPDATE $channels_table SET channel_id=?, channel_name=?, channel_class=?, channel_group=?, icon_url=?, stream_url=? WHERE channel_id=?");
-                    $stmt->execute(array_merge($data, [$_POST['id']]));
-                    $message = 'Канал обновлён';
+    // Проверка CSRF токена
+    if (!isset($_POST['csrf_token']) || !validate_csrf_token($_POST['csrf_token'])) {
+        $error = 'Ошибка безопасности: неверный CSRF токен';
+    } else {
+        $action = $_POST['channel_action'];
+        try {
+            if ($action == 'save') {
+                if (empty($_POST['channel_id']) || empty($_POST['channel_name']) || empty($_POST['stream_url'])) {
+                    $error = 'Заполните обязательные поля';
                 } else {
-                    // Добавление
-                    $stmt = $pdo->prepare("INSERT INTO $channels_table (channel_id, channel_name, channel_class, channel_group, icon_url, stream_url) VALUES (?,?,?,?,?,?)");
-                    $stmt->execute($data);
-                    $message = 'Канал добавлен';
+                    $data = [
+                        $_POST['channel_id'],
+                        $_POST['channel_name'],
+                        $_POST['channel_class'],
+                        $_POST['channel_group'],
+                        $_POST['icon_url'],
+                        $_POST['stream_url']
+                    ];
+                    if (!empty($_POST['id'])) {
+                        // Обновление
+                        $stmt = $pdo->prepare("UPDATE $channels_table SET channel_id=?, channel_name=?, channel_class=?, channel_group=?, icon_url=?, stream_url=? WHERE channel_id=?");
+                        $stmt->execute(array_merge($data, [$_POST['id']]));
+                        $message = 'Канал обновлён';
+                    } else {
+                        // Добавление
+                        $stmt = $pdo->prepare("INSERT INTO $channels_table (channel_id, channel_name, channel_class, channel_group, icon_url, stream_url) VALUES (?,?,?,?,?,?)");
+                        $stmt->execute($data);
+                        $message = 'Канал добавлен';
+                    }
                 }
-            }
-        } elseif ($action == 'delete') {
-            $stmt = $pdo->prepare("DELETE FROM $channels_table WHERE channel_id=?");
-            $stmt->execute([$_POST['id']]);
-            $message = 'Канал удалён';
-        } elseif ($action == 'mass_add') {
-            $added = 0;
-            foreach (explode("\n", trim($_POST['channels_data'])) as $line) {
-                $line = trim($line);
-                if (!$line) continue;
-                $parts = explode('|', $line);
-                if (count($parts) < 2) continue;
-                [$channel_id, $channel_name, $channel_class, $channel_group, $icon_url, $stream_url] = array_pad($parts, 6, '');
-                $stmt = $pdo->prepare("SELECT channel_id FROM $channels_table WHERE channel_id=?");
-                $stmt->execute([$channel_id]);
-                if ($stmt->fetch()) {
-                    $stmt = $pdo->prepare("UPDATE $channels_table SET channel_name=?, channel_class=?, channel_group=?, icon_url=?, stream_url=? WHERE channel_id=?");
-                    $stmt->execute([$channel_name, $channel_class, $channel_group, $icon_url, $stream_url, $channel_id]);
-                } else {
-                    $stmt = $pdo->prepare("INSERT INTO $channels_table (channel_id, channel_name, channel_class, channel_group, icon_url, stream_url) VALUES (?,?,?,?,?,?)");
-                    $stmt->execute([$channel_id, $channel_name, $channel_class, $channel_group, $icon_url, $stream_url]);
+            } elseif ($action == 'delete') {
+                $stmt = $pdo->prepare("DELETE FROM $channels_table WHERE channel_id=?");
+                $stmt->execute([$_POST['id']]);
+                $message = 'Канал удалён';
+            } elseif ($action == 'mass_add') {
+                $added = 0;
+                foreach (explode("\n", trim($_POST['channels_data'])) as $line) {
+                    $line = trim($line);
+                    if (!$line) continue;
+                    $parts = explode('|', $line);
+                    if (count($parts) < 2) continue;
+                    [$channel_id, $channel_name, $channel_class, $channel_group, $icon_url, $stream_url] = array_pad($parts, 6, '');
+                    $stmt = $pdo->prepare("SELECT channel_id FROM $channels_table WHERE channel_id=?");
+                    $stmt->execute([$channel_id]);
+                    if ($stmt->fetch()) {
+                        $stmt = $pdo->prepare("UPDATE $channels_table SET channel_name=?, channel_class=?, channel_group=?, icon_url=?, stream_url=? WHERE channel_id=?");
+                        $stmt->execute([$channel_name, $channel_class, $channel_group, $icon_url, $stream_url, $channel_id]);
+                    } else {
+                        $stmt = $pdo->prepare("INSERT INTO $channels_table (channel_id, channel_name, channel_class, channel_group, icon_url, stream_url) VALUES (?,?,?,?,?,?)");
+                        $stmt->execute([$channel_id, $channel_name, $channel_class, $channel_group, $icon_url, $stream_url]);
+                    }
+                    $added++;
                 }
-                $added++;
+                $message = "Добавлено/обновлено каналов: $added";
             }
-            $message = "Добавлено/обновлено каналов: $added";
+        } catch (Exception $e) {
+            $error = 'Ошибка: ' . $e->getMessage();
         }
-    } catch (Exception $e) {
-        $error = 'Ошибка: ' . $e->getMessage();
     }
 }
 
 // --- Обработка действий (ключи) ---
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['key_action'])) {
-    $action = $_POST['key_action'];
-    try {
-        if ($action == 'save') {
-            if (empty($_POST['access_key'])) {
-                $error = 'Ключ доступа обязателен';
-            } else {
-                if (!empty($_POST['edit_key'])) {
-                    // Обновление
-                    $stmt = $pdo->prepare("UPDATE $users_table SET discription=?, status=? WHERE access_key=?");
-                    $stmt->execute([$_POST['discription'] ?? '', $_POST['status'], $_POST['edit_key']]);
-                    $message = 'Ключ обновлён';
+    // Проверка CSRF токена
+    if (!isset($_POST['csrf_token']) || !validate_csrf_token($_POST['csrf_token'])) {
+        $error = 'Ошибка безопасности: неверный CSRF токен';
+    } else {
+        $action = $_POST['key_action'];
+        try {
+            if ($action == 'save') {
+                if (empty($_POST['access_key'])) {
+                    $error = 'Ключ доступа обязателен';
                 } else {
-                    // Добавление
-                    $stmt = $pdo->prepare("SELECT access_key FROM $users_table WHERE access_key=?");
-                    $stmt->execute([$_POST['access_key']]);
-                    if ($stmt->fetch()) {
-                        $error = 'Ключ уже существует';
+                    if (!empty($_POST['edit_key'])) {
+                        // Обновление
+                        $stmt = $pdo->prepare("UPDATE $users_table SET discription=?, status=? WHERE access_key=?");
+                        $stmt->execute([$_POST['discription'] ?? '', $_POST['status'], $_POST['edit_key']]);
+                        $message = 'Ключ обновлён';
                     } else {
-                        $stmt = $pdo->prepare("INSERT INTO $users_table (access_key, status, discription) VALUES (?,?,?)");
-                        $stmt->execute([$_POST['access_key'], $_POST['status'], $_POST['discription'] ?? '']);
-                        $message = 'Ключ добавлен';
+                        // Добавление
+                        $stmt = $pdo->prepare("SELECT access_key FROM $users_table WHERE access_key=?");
+                        $stmt->execute([$_POST['access_key']]);
+                        if ($stmt->fetch()) {
+                            $error = 'Ключ уже существует';
+                        } else {
+                            $stmt = $pdo->prepare("INSERT INTO $users_table (access_key, status, discription) VALUES (?,?,?)");
+                            $stmt->execute([$_POST['access_key'], $_POST['status'], $_POST['discription'] ?? '']);
+                            $message = 'Ключ добавлен';
+                        }
                     }
                 }
-            }
-        } elseif ($action == 'delete') {
-            $stmt = $pdo->prepare("DELETE FROM $users_table WHERE access_key=?");
-            $stmt->execute([$_POST['access_key']]);
-            $message = 'Ключ удалён';
-        } elseif ($action == 'toggle_status') {
-            $stmt = $pdo->prepare("UPDATE $users_table SET status=? WHERE access_key=?");
-            $stmt->execute([$_POST['status'], $_POST['access_key']]);
-            $message = $_POST['status'] == 'active' ? 'Ключ активирован' : 'Ключ заблокирован';
-        } elseif ($action == 'mass_add') {
-            $added = 0;
-            foreach (explode("\n", trim($_POST['keys_data'])) as $line) {
-                $line = trim($line);
-                if (!$line) continue;
-                [$access_key, $status, $description] = array_pad(explode('|', $line), 3, '');
-                $status = $status ?: 'active';
-                if ($status == 'blocked') $status = 'banned';
-                $stmt = $pdo->prepare("SELECT access_key FROM $users_table WHERE access_key=?");
-                $stmt->execute([$access_key]);
-                if (!$stmt->fetch()) {
-                    $stmt = $pdo->prepare("INSERT INTO $users_table (access_key, status, discription) VALUES (?,?,?)");
-                    $stmt->execute([$access_key, $status, $description]);
-                    $added++;
+            } elseif ($action == 'delete') {
+                $stmt = $pdo->prepare("DELETE FROM $users_table WHERE access_key=?");
+                $stmt->execute([$_POST['access_key']]);
+                $message = 'Ключ удалён';
+            } elseif ($action == 'toggle_status') {
+                $stmt = $pdo->prepare("UPDATE $users_table SET status=? WHERE access_key=?");
+                $stmt->execute([$_POST['status'], $_POST['access_key']]);
+                $message = $_POST['status'] == 'active' ? 'Ключ активирован' : 'Ключ заблокирован';
+            } elseif ($action == 'mass_add') {
+                $added = 0;
+                foreach (explode("\n", trim($_POST['keys_data'])) as $line) {
+                    $line = trim($line);
+                    if (!$line) continue;
+                    [$access_key, $status, $description] = array_pad(explode('|', $line), 3, '');
+                    $status = $status ?: 'active';
+                    if ($status == 'blocked') $status = 'banned';
+                    $stmt = $pdo->prepare("SELECT access_key FROM $users_table WHERE access_key=?");
+                    $stmt->execute([$access_key]);
+                    if (!$stmt->fetch()) {
+                        $stmt = $pdo->prepare("INSERT INTO $users_table (access_key, status, discription) VALUES (?,?,?)");
+                        $stmt->execute([$access_key, $status, $description]);
+                        $added++;
+                    }
                 }
+                $message = "Добавлено ключей: $added";
             }
-            $message = "Добавлено ключей: $added";
+        } catch (Exception $e) {
+            $error = 'Ошибка: ' . $e->getMessage();
         }
-    } catch (Exception $e) {
-        $error = 'Ошибка: ' . $e->getMessage();
     }
 }
 
 // --- Переименование группы ---
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['group_action']) && $_POST['group_action'] == 'rename') {
-    try {
-        $stmt = $pdo->prepare("UPDATE $channels_table SET channel_group=? WHERE channel_group=?");
-        $stmt->execute([$_POST['new_name'], $_POST['old_name']]);
-        $message = 'Группа переименована';
-    } catch (Exception $e) {
-        $error = 'Ошибка: ' . $e->getMessage();
+    // Проверка CSRF токена
+    if (!isset($_POST['csrf_token']) || !validate_csrf_token($_POST['csrf_token'])) {
+        $error = 'Ошибка безопасности: неверный CSRF токен';
+    } else {
+        try {
+            $stmt = $pdo->prepare("UPDATE $channels_table SET channel_group=? WHERE channel_group=?");
+            $stmt->execute([$_POST['new_name'], $_POST['old_name']]);
+            $message = 'Группа переименована';
+        } catch (Exception $e) {
+            $error = 'Ошибка: ' . $e->getMessage();
+        }
     }
 }
 
@@ -203,7 +234,15 @@ if ($section == 'channels') {
     }
 }
 
-function safe_html($value) { return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8'); }
+function safe_html($value) { 
+    return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8'); 
+}
+
+// Безопасное кодирование для JSON в HTML атрибутах
+function safe_json_encode($data) {
+    $json = json_encode($data, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+    return $json === false ? 'null' : $json;
+}
 
 $edit_group = $_GET['edit_group'] ?? null;
 ?>
@@ -216,7 +255,7 @@ $edit_group = $_GET['edit_group'] ?? null;
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-/* Стили оставляем без изменений – они уже были в коде */
+/* Стили оставляем без изменений */
 * {
     margin: 0;
     padding: 0;
@@ -710,8 +749,8 @@ textarea.form-control {
             </div>
             <div class="table-container">
                 <table class="data-table">
-                    <thead>……
-<th style="width:40%">Стрим</th><th style="width:20%">ID</th><th style="width:15%">Класс</th><th style="width:15%">Группа</th><th style="width:10%">Действие</th>
+                    <thead>
+                        <tr><th style="width:40%">Стрим</th><th style="width:20%">ID</th><th style="width:15%">Класс</th><th style="width:15%">Группа</th><th style="width:10%">Действие</th></tr>
                     </thead>
                     <tbody id="channelsTableBody">
                         <?php if (empty($channels)): ?>
@@ -723,7 +762,7 @@ textarea.form-control {
                                 <td><?= safe_html($c['channel_class']??'-') ?></td>
                                 <td><?= $c['channel_group'] ? safe_html($c['channel_group']) : '-' ?></td>
                                 <td><div class="actions">
-                                    <button class="action-btn" onclick="openChannelModal(<?= safe_html(json_encode($c)) ?>)"><i class="fas fa-edit"></i></button>
+                                    <button class="action-btn" onclick='openChannelModal(<?= safe_json_encode($c) ?>)'><i class="fas fa-edit"></i></button>
                                     <form method="POST" style="display:inline;" onsubmit="return confirm('Удалить канал?')">
                                         <input type="hidden" name="csrf_token" value="<?= $csrf_token ?>">
                                         <input type="hidden" name="channel_action" value="delete">
@@ -764,7 +803,7 @@ textarea.form-control {
                                 <td><span class="status-badge <?= $k['status']=='active'?'status-active':'status-banned' ?>"><?= $k['status']=='active'?'Работает':'Забанен' ?></span></td>
                                 <td><div class="actions">
                                     <button class="action-btn" onclick="copyToClipboard('<?= safe_html($k['access_key']) ?>')" title="Скопировать ключ"><i class="fas fa-copy"></i></button>
-                                    <button class="action-btn" onclick="openKeyModal(<?= safe_html(json_encode($k)) ?>)"><i class="fas fa-edit"></i></button>
+                                    <button class="action-btn" onclick='openKeyModal(<?= safe_json_encode($k) ?>)'><i class="fas fa-edit"></i></button>
                                     <?php if ($k['status']=='active'): ?>
                                         <form method="POST" style="display:inline;">
                                             <input type="hidden" name="csrf_token" value="<?= $csrf_token ?>">
@@ -817,10 +856,16 @@ textarea.form-control {
                 <div class="stats-grid"><div class="stat-card"><h3>Всего групп</h3><div class="value"><?= count($groups) ?></div></div><div class="stat-card"><h3>Всего каналов</h3><div class="value"><?= $totalChannels ?></div></div></div>
                 <div class="table-container">
                     <table class="data-table">
-                        <thead><tr><th>Группа</th><th>Каналов</th><th>Действия</th></tr></thead>
+                        <thead>……
+<th>Группа</th><th>Каналов</th><th>Действия</th>
+                        </thead>
                         <tbody id="groupsTableBody">
                             <?php foreach ($groups as $groupName => $groupChannels): ?>
-                                <tr data-group="<?= safe_html($groupName) ?>"><td><strong><?= safe_html($groupName) ?></strong></td><td><?= count($groupChannels) ?></td><td><div class="actions"><a href="?chnl=groups&action=edit&edit_group=<?= urlencode($groupName) ?>" class="action-btn"><i class="fas fa-edit"></i> Переименовать</a><a href="?chnl=channels&group=<?= urlencode($groupName) ?>" class="action-btn"><i class="fas fa-eye"></i> Показать</a></div></td></tr>
+                                <tr data-group="<?= safe_html($groupName) ?>">……
+<strong><?= safe_html($groupName) ?></strong>……
+<?= count($groupChannels) ?>……
+<div class="actions"><a href="?chnl=groups&action=edit&edit_group=<?= urlencode($groupName) ?>" class="action-btn"><i class="fas fa-edit"></i> Переименовать</a><a href="?chnl=channels&group=<?= urlencode($groupName) ?>" class="action-btn"><i class="fas fa-eye"></i> Показать</a></div>……
+</tr>
                             <?php endforeach; ?>
                         </tbody>
                     </table>
@@ -830,7 +875,7 @@ textarea.form-control {
     </div>
 </div>
 
-<!-- Модальные окна -->
+<!-- Модальные окна (добавлены скрытые поля с CSRF токеном) -->
 <div id="channelModal" class="modal"><div class="modal-content"><div class="modal-header"><h3 id="channelModalTitle">Добавить канал</h3><button type="button" class="btn btn-secondary" onclick="closeModal('channelModal')">&times;</button></div><form method="POST" id="channelForm"><div class="modal-body"><input type="hidden" name="csrf_token" value="<?= $csrf_token ?>"><input type="hidden" name="channel_action" value="save"><input type="hidden" name="id" id="channelId"><div class="form-group"><label>ID канала *</label><input type="text" class="form-control" name="channel_id" id="channel_id" required></div><div class="form-group"><label>Название *</label><input type="text" class="form-control" name="channel_name" id="channel_name" required></div><div class="form-group"><label>Класс</label><input type="text" class="form-control" name="channel_class" id="channel_class"></div><div class="form-group"><label>Группа</label><input type="text" class="form-control" name="channel_group" id="channel_group"></div><div class="form-group"><label>URL иконки</label><input type="text" class="form-control" name="icon_url" id="icon_url"></div><div class="form-group"><label>URL потока *</label><input type="text" class="form-control" name="stream_url" id="stream_url" required></div></div><div class="modal-footer"><button type="button" class="btn btn-secondary" onclick="closeModal('channelModal')">Отмена</button><button type="submit" class="btn btn-primary">Сохранить</button></div></form></div></div>
 
 <div id="massChannelModal" class="modal">
