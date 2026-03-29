@@ -1,16 +1,9 @@
 <?php
-// ===== НАСТРОЙКИ ИЗ КОНФИГА =====
-define('CONFIG_RUNNER', 'PERMISSION_DATABASE');
-define('database_server', 'fdb1031.runhosting.com');
-define('database_login', '4723564_avnet');
-define('database_password', 'kjh7LTEwd9NaMBgakCXm');
-define('database_name', '4723564_avnet');
-define('table_users', 'Service_users');
-define('table_stream_source', 'AnyStream');
-define('panel_password', 'kjh7LTEwd9NaMBgakCXm!@#FCCDAAX');
-
-$epg_Master = ['https://iptvx.one/epg/epg_lte.xml.gz'];
-// ===== КОНЕЦ НАСТРОЕК =====
+// Подключаем конфиг (путь зависит от расположения файла)
+// Если скрипт в корне:
+require_once __DIR__ . '/config.php';
+// Если скрипт в подпапке (например, admin/), используйте:
+// require_once __DIR__ . '/../config.php';
 
 // Проверяем наличие ключа доступа
 if (empty($_GET['key'])) {
@@ -23,14 +16,14 @@ $key = trim($_GET['key']);
 // Проверяем, что все необходимые константы базы данных определены
 if (!defined('database_server') || !defined('database_login') || !defined('database_password') || !defined('database_name')) {
     http_response_code(500);
-    exit;
+    exit('Database configuration error');
 }
 
 // Подключение к базе данных
 $mysqli = @new mysqli(database_server, database_login, database_password, database_name);
 if ($mysqli->connect_errno) {
     http_response_code(500);
-    exit;
+    exit('Database connection error: ' . $mysqli->connect_error);
 }
 $mysqli->set_charset('utf8');
 
@@ -41,7 +34,7 @@ $stmt = $mysqli->prepare("SELECT * FROM `{$tableUsers}` WHERE `access_key` = ? L
 if (!$stmt) {
     http_response_code(500);
     $mysqli->close();
-    exit;
+    exit('Prepare statement error');
 }
 
 $stmt->bind_param("s", $key);
@@ -62,7 +55,8 @@ $stmt->close();
 // Проверка статуса пользователя
 if (isset($userData['status']) && $userData['status'] === 'banned') {
     header('Content-Type: text/plain; charset=utf-8');
-    echo "#EXTINF:-1, INFO\n"."https://kirya-coder.yzz.me/zg/ban.png";
+    echo "#EXTINF:-1, INFO\n";
+    echo "https://kirya-coder.yzz.me/zg/ban.png\n";
 
     if (defined('error_client_banned') && !empty(error_client_banned)) {
         echo htmlspecialchars(error_client_banned, ENT_QUOTES, 'UTF-8') . "\n";
@@ -80,14 +74,14 @@ $allowedTables = ['AnyStream', 'StreamSource', 'Channels'];
 if (!in_array($table, $allowedTables)) {
     http_response_code(500);
     $mysqli->close();
-    exit;
+    exit('Invalid table name');
 }
 
 $res = $mysqli->query("SELECT * FROM `{$table}`");
 if (!$res) {
     http_response_code(500);
     $mysqli->close();
-    exit;
+    exit('Query error: ' . $mysqli->error);
 }
 
 /**
@@ -124,7 +118,7 @@ function escapeM3uAttribute($value) {
 
 echo "#EXTM3U\n";
 
-// Добавляем EPG ссылки, если они заданы
+// Добавляем EPG ссылки, если они заданы в config.php
 if (isset($epg_Master) && !empty($epg_Master)) {
     if (is_array($epg_Master)) {
         foreach ($epg_Master as $epgUrl) {
@@ -142,6 +136,7 @@ if (isset($epg_Master) && !empty($epg_Master)) {
 }
 
 // Формируем плейлист
+$channelCount = 0;
 while ($row = $res->fetch_assoc()) {
     $url = detect_stream_url($row);
     if (!$url) continue;
@@ -157,8 +152,13 @@ while ($row = $res->fetch_assoc()) {
 
     echo "#EXTINF:-1 tvg-id=\"{$tvg_id}\" tvg-name=\"{$tvg_name}\" tvg-logo=\"{$tvg_logo}\" group-title=\"{$group_title}\",{$title}\n";
     echo "{$validUrl}\n";
+    $channelCount++;
 }
 
 $res->free();
 $mysqli->close();
+
+// Опционально: добавить комментарий с количеством каналов
+// echo "# Каналов загружено: {$channelCount}\n";
+
 exit;
