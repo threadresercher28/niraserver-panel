@@ -1,11 +1,6 @@
 <?php
-// Подключаем конфиг (путь зависит от расположения файла)
-// Если скрипт в корне:
 require_once __DIR__ . '/config.php';
-// Если скрипт в подпапке (например, admin/), используйте:
-// require_once __DIR__ . '/../config.php';
 
-// Проверяем наличие ключа доступа
 if (empty($_GET['key'])) {
     http_response_code(404);
     exit;
@@ -13,13 +8,11 @@ if (empty($_GET['key'])) {
 
 $key = trim($_GET['key']);
 
-// Проверяем, что все необходимые константы базы данных определены
 if (!defined('database_server') || !defined('database_login') || !defined('database_password') || !defined('database_name')) {
     http_response_code(500);
     exit('Database configuration error');
 }
 
-// Подключение к базе данных
 $mysqli = @new mysqli(database_server, database_login, database_password, database_name);
 if ($mysqli->connect_errno) {
     http_response_code(500);
@@ -29,7 +22,6 @@ $mysqli->set_charset('utf8');
 
 $tableUsers = defined('table_users') ? table_users : 'Service_users';
 
-// Подготовленный запрос для проверки ключа
 $stmt = $mysqli->prepare("SELECT * FROM `{$tableUsers}` WHERE `access_key` = ? LIMIT 1");
 if (!$stmt) {
     http_response_code(500);
@@ -52,7 +44,6 @@ $userData = $res->fetch_assoc();
 $res->free();
 $stmt->close();
 
-// Проверка статуса пользователя
 if (isset($userData['status']) && $userData['status'] === 'banned') {
     header('Content-Type: text/plain; charset=utf-8');
     echo "#EXTINF:-1, INFO\n";
@@ -69,7 +60,6 @@ if (isset($userData['status']) && $userData['status'] === 'banned') {
 header('Content-Type: text/plain; charset=utf-8');
 
 $table = defined('table_stream_source') ? table_stream_source : 'AnyStream';
-// Белый список допустимых имён таблиц
 $allowedTables = ['AnyStream', 'StreamSource', 'Channels'];
 if (!in_array($table, $allowedTables)) {
     http_response_code(500);
@@ -84,9 +74,6 @@ if (!$res) {
     exit('Query error: ' . $mysqli->error);
 }
 
-/**
- * Определяет URL потока из строки записи
- */
 function detect_stream_url(array $row)
 {
     $candidates = ['stream_url', 'url', 'src', 'link', 'play', 'stream', 'm3u8', 'rtmp'];
@@ -105,9 +92,6 @@ function detect_stream_url(array $row)
     return null;
 }
 
-/**
- * Безопасное экранирование для M3U атрибутов
- */
 function escapeM3uAttribute($value) {
     if ($value === null || $value === '') return '';
     $value = str_replace('"', '&quot;', $value);
@@ -118,7 +102,6 @@ function escapeM3uAttribute($value) {
 
 echo "#EXTM3U\n";
 
-// Добавляем EPG ссылки, если они заданы в config.php
 if (isset($epg_Master) && !empty($epg_Master)) {
     if (is_array($epg_Master)) {
         foreach ($epg_Master as $epgUrl) {
@@ -135,7 +118,6 @@ if (isset($epg_Master) && !empty($epg_Master)) {
     }
 }
 
-// Формируем плейлист
 $channelCount = 0;
 while ($row = $res->fetch_assoc()) {
     $url = detect_stream_url($row);
@@ -157,8 +139,5 @@ while ($row = $res->fetch_assoc()) {
 
 $res->free();
 $mysqli->close();
-
-// Опционально: добавить комментарий с количеством каналов
-// echo "# Каналов загружено: {$channelCount}\n";
 
 exit;
