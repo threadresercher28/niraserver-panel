@@ -10,7 +10,7 @@ if (!isset($_SESSION['initialized'])) {
 }
 
 // Правильный путь к config.php (на уровень выше)
-require_once __DIR__ . '/config.php';
+require_once 'config.php';
 
 if (!isset($_SESSION['admin'])) {
     header('Location: index.php');
