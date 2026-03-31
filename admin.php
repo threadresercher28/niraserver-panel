@@ -194,11 +194,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['group_action']) && $_P
     }
 }
 
-// --- Пагинация и фильтры ---
+// --- Фильтры (без пагинации) ---
 $section = $_GET['chnl'] ?? 'channels';
-$page = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
-$perPage = 50;
-$offset = ($page - 1) * $perPage;
 
 $channels = [];
 $totalChannels = 0;
@@ -211,20 +208,18 @@ $allGroups = $pdo->query("SELECT DISTINCT channel_group FROM $channels_table WHE
 $groups = array_fill_keys($allGroups, []);
 
 if ($section == 'channels') {
+    // Получаем общее количество каналов для статистики
     $totalStmt = $pdo->query("SELECT COUNT(*) FROM $channels_table");
     $totalChannels = $totalStmt->fetchColumn();
-    $stmt = $pdo->prepare("SELECT * FROM $channels_table ORDER BY channel_group, channel_name LIMIT :offset, :perPage");
-    $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
-    $stmt->bindValue(':perPage', $perPage, PDO::PARAM_INT);
-    $stmt->execute();
+    // Запрос без пагинации: все каналы
+    $stmt = $pdo->query("SELECT * FROM $channels_table ORDER BY channel_group, channel_name");
     $channels = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } elseif ($section == 'keys') {
+    // Получаем общее количество ключей для статистики
     $totalStmt = $pdo->query("SELECT COUNT(*) FROM $users_table");
     $totalKeys = $totalStmt->fetchColumn();
-    $stmt = $pdo->prepare("SELECT access_key, status, discription FROM $users_table ORDER BY access_key LIMIT :offset, :perPage");
-    $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
-    $stmt->bindValue(':perPage', $perPage, PDO::PARAM_INT);
-    $stmt->execute();
+    // Запрос без пагинации: все ключи
+    $stmt = $pdo->query("SELECT access_key, status, discription FROM $users_table ORDER BY access_key");
     $keys = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } elseif ($section == 'groups') {
     $allChannels = $pdo->query("SELECT channel_group FROM $channels_table WHERE channel_group != ''")->fetchAll(PDO::FETCH_ASSOC);
@@ -754,13 +749,13 @@ textarea.form-control {
                     </thead>
                     <tbody id="channelsTableBody">
                         <?php if (empty($channels)): ?>
-                            <tr><td colspan="5" style="text-align:center; padding:30px;">Нет данных</td></tr>
+                            <tr><td colspan="5" style="text-align:center; padding:30px;">Нет данных</td> </tr>
                         <?php else: foreach ($channels as $c): ?>
                             <tr data-group="<?= safe_html($c['channel_group']) ?>" data-name="<?= safe_html($c['channel_name']) ?>" data-id="<?= safe_html($c['channel_id']) ?>">
-                                <td><div class="channel-info"><div class="channel-icon"><?php if (!empty($c['icon_url'])): ?><img src="<?= safe_html($c['icon_url']) ?>" alt="icon"><?php else: ?><i class="fas fa-tv"></i><?php endif; ?></div><div class="channel-name"><?= safe_html($c['channel_name']) ?></div></div></td>
-                                <td><code><?= safe_html($c['channel_id']) ?></code></td>
-                                <td><?= safe_html($c['channel_class']??'-') ?></td>
-                                <td><?= $c['channel_group'] ? safe_html($c['channel_group']) : '-' ?></td>
+                                <td><div class="channel-info"><div class="channel-icon"><?php if (!empty($c['icon_url'])): ?><img src="<?= safe_html($c['icon_url']) ?>" alt="icon"><?php else: ?><i class="fas fa-tv"></i><?php endif; ?></div><div class="channel-name"><?= safe_html($c['channel_name']) ?></div></div> </td>
+                                <td><code><?= safe_html($c['channel_id']) ?></code> </td>
+                                <td><?= safe_html($c['channel_class']??'-') ?> </td>
+                                <td><?= $c['channel_group'] ? safe_html($c['channel_group']) : '-' ?> </td>
                                 <td><div class="actions">
                                     <button class="action-btn" onclick='openChannelModal(<?= safe_json_encode($c) ?>)'><i class="fas fa-edit"></i></button>
                                     <form method="POST" style="display:inline;" onsubmit="return confirm('Удалить канал?')">
@@ -769,19 +764,13 @@ textarea.form-control {
                                         <input type="hidden" name="id" value="<?= safe_html($c['channel_id']) ?>">
                                         <button type="submit" class="action-btn delete"><i class="fas fa-trash-alt"></i></button>
                                     </form>
-                                </div></td>
-                            </tr>
+                                </div> </td>
+                             </tr>
                         <?php endforeach; endif; ?>
                     </tbody>
                 </table>
             </div>
-            <?php if ($totalChannels > $perPage): ?>
-            <div class="pagination">
-                <?php for ($i = 1; $i <= ceil($totalChannels / $perPage); $i++): ?>
-                    <?php if ($i == $page): ?><span class="active"><?= $i ?></span><?php else: ?><a href="?chnl=channels&page=<?= $i ?>"><?= $i ?></a><?php endif; ?>
-                <?php endfor; ?>
-            </div>
-            <?php endif; ?>
+            <!-- Блок пагинации удалён -->
 
         <?php elseif ($section == 'keys'): ?>
             <div class="search-container"><input type="text" id="searchKeys" class="search-input" placeholder="🔍 Поиск ключей..."></div>
@@ -792,15 +781,15 @@ textarea.form-control {
             </div>
             <div class="table-container">
                 <table class="data-table">
-                    <thead><tr><th>Ключ</th><th>Описание</th><th>Статус</th><th>Действие</th></tr></thead>
+                    <thead> <tr><th>Ключ</th><th>Описание</th><th>Статус</th><th>Действие</th></tr> </thead>
                     <tbody id="keysTableBody">
                         <?php if (empty($keys)): ?>
-                            <tr><td colspan="4" style="text-align:center; padding:30px;">Нет ключей</td></tr>
+                             <tr><td colspan="4" style="text-align:center; padding:30px;">Нет ключей</td></tr>
                         <?php else: foreach ($keys as $k): ?>
                             <tr data-key="<?= safe_html($k['access_key']) ?>" data-desc="<?= safe_html($k['discription']??'') ?>">
-                                <td class="key-cell"><span class="key-value"><?= safe_html($k['access_key']) ?></span></td>
-                                <td><?= safe_html($k['discription']??'') ?></td>
-                                <td><span class="status-badge <?= $k['status']=='active'?'status-active':'status-banned' ?>"><?= $k['status']=='active'?'Работает':'Забанен' ?></span></td>
+                                <td class="key-cell"><span class="key-value"><?= safe_html($k['access_key']) ?></span> </td>
+                                <td><?= safe_html($k['discription']??'') ?> </td>
+                                <td><span class="status-badge <?= $k['status']=='active'?'status-active':'status-banned' ?>"><?= $k['status']=='active'?'Работает':'Забанен' ?></span> </td>
                                 <td><div class="actions">
                                     <button class="action-btn" onclick="copyToClipboard('<?= safe_html($k['access_key']) ?>')" title="Скопировать ключ"><i class="fas fa-copy"></i></button>
                                     <button class="action-btn" onclick='openKeyModal(<?= safe_json_encode($k) ?>)'><i class="fas fa-edit"></i></button>
@@ -827,19 +816,13 @@ textarea.form-control {
                                         <input type="hidden" name="access_key" value="<?= safe_html($k['access_key']) ?>">
                                         <button type="submit" class="action-btn delete" title="Удалить"><i class="fas fa-trash-alt"></i></button>
                                     </form>
-                                </div></td>
+                                </div> </td>
                             </tr>
                         <?php endforeach; endif; ?>
                     </tbody>
                 </table>
             </div>
-            <?php if ($totalKeys > $perPage): ?>
-            <div class="pagination">
-                <?php for ($i = 1; $i <= ceil($totalKeys / $perPage); $i++): ?>
-                    <?php if ($i == $page): ?><span class="active"><?= $i ?></span><?php else: ?><a href="?chnl=keys&page=<?= $i ?>"><?= $i ?></a><?php endif; ?>
-                <?php endfor; ?>
-            </div>
-            <?php endif; ?>
+            <!-- Блок пагинации удалён -->
 
         <?php elseif ($section == 'groups'): ?>
             <?php if (isset($_GET['action']) && $_GET['action'] == 'edit' && $edit_group): ?>
@@ -856,16 +839,14 @@ textarea.form-control {
                 <div class="stats-grid"><div class="stat-card"><h3>Всего групп</h3><div class="value"><?= count($groups) ?></div></div><div class="stat-card"><h3>Всего каналов</h3><div class="value"><?= $totalChannels ?></div></div></div>
                 <div class="table-container">
                     <table class="data-table">
-                        <thead>……
-<th>Группа</th><th>Каналов</th><th>Действия</th>
-                        </thead>
+                        <thead><tr><th>Группа</th><th>Каналов</th><th>Действия</th></tr></thead>
                         <tbody id="groupsTableBody">
                             <?php foreach ($groups as $groupName => $groupChannels): ?>
-                                <tr data-group="<?= safe_html($groupName) ?>">……
-<strong><?= safe_html($groupName) ?></strong>……
-<?= count($groupChannels) ?>……
-<div class="actions"><a href="?chnl=groups&action=edit&edit_group=<?= urlencode($groupName) ?>" class="action-btn"><i class="fas fa-edit"></i> Переименовать</a><a href="?chnl=channels&group=<?= urlencode($groupName) ?>" class="action-btn"><i class="fas fa-eye"></i> Показать</a></div>……
-</tr>
+                                <tr data-group="<?= safe_html($groupName) ?>">
+                                    <td><strong><?= safe_html($groupName) ?></strong></td>
+                                    <td><?= count($groupChannels) ?></td>
+                                    <td><div class="actions"><a href="?chnl=groups&action=edit&edit_group=<?= urlencode($groupName) ?>" class="action-btn"><i class="fas fa-edit"></i> Переименовать</a><a href="?chnl=channels&group=<?= urlencode($groupName) ?>" class="action-btn"><i class="fas fa-eye"></i> Показать</a></div></td>
+                                </tr>
                             <?php endforeach; ?>
                         </tbody>
                     </table>
@@ -875,7 +856,7 @@ textarea.form-control {
     </div>
 </div>
 
-<!-- Модальные окна (добавлены скрытые поля с CSRF токеном) -->
+<!-- Модальные окна (скрытые поля с CSRF токеном) -->
 <div id="channelModal" class="modal"><div class="modal-content"><div class="modal-header"><h3 id="channelModalTitle">Добавить канал</h3><button type="button" class="btn btn-secondary" onclick="closeModal('channelModal')">&times;</button></div><form method="POST" id="channelForm"><div class="modal-body"><input type="hidden" name="csrf_token" value="<?= $csrf_token ?>"><input type="hidden" name="channel_action" value="save"><input type="hidden" name="id" id="channelId"><div class="form-group"><label>ID канала *</label><input type="text" class="form-control" name="channel_id" id="channel_id" required></div><div class="form-group"><label>Название *</label><input type="text" class="form-control" name="channel_name" id="channel_name" required></div><div class="form-group"><label>Класс</label><input type="text" class="form-control" name="channel_class" id="channel_class"></div><div class="form-group"><label>Группа</label><input type="text" class="form-control" name="channel_group" id="channel_group"></div><div class="form-group"><label>URL иконки</label><input type="text" class="form-control" name="icon_url" id="icon_url"></div><div class="form-group"><label>URL потока *</label><input type="text" class="form-control" name="stream_url" id="stream_url" required></div></div><div class="modal-footer"><button type="button" class="btn btn-secondary" onclick="closeModal('channelModal')">Отмена</button><button type="submit" class="btn btn-primary">Сохранить</button></div></form></div></div>
 
 <div id="massChannelModal" class="modal">
