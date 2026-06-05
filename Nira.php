@@ -7,6 +7,14 @@ function sanitize_xss($i){if(is_array($i))return array_map('sanitize_xss',$i);$i
 function sanitize_crlf($i){if(is_array($i))return array_map('sanitize_crlf',$i);return preg_replace('/[\r\n]|%0[ad]/i','',$i);}
 function sanitize_path($i){return preg_replace('/\.\.([\/\\\\])?/','',$i);}
 if(empty($_GET['url'])){http_response_code(400);exit("Missing URL");}
+$rawUrl = $_GET['url'];
+$rawHost = parse_url($rawUrl, PHP_URL_HOST);
+if ($rawHost !== false && $rawHost !== null) {
+    if (preg_match('/[<>\'\"\;#\*\\\\\/%]|javascript:/i', $rawHost)) {
+        http_response_code(400);
+        exit("Invalid characters in host");
+    }
+}
 $url=sanitize_crlf(sanitize_xss($_GET['url']));if(!filter_var($url,FILTER_VALIDATE_URL)){http_response_code(400);exit("Invalid URL");}
 $scheme=strtolower(parse_url($url,PHP_URL_SCHEME));if(!in_array($scheme,['http','https'])){http_response_code(403);exit("Only HTTP/HTTPS allowed");}
 $path=sanitize_path(parse_url($url,PHP_URL_PATH));$ext=sanitize_sql(strtolower(pathinfo($path,PATHINFO_EXTENSION)));if($ext&&!in_array($ext,$allowed_ext)){http_response_code(403);exit("Extension not allowed");}
