@@ -11,7 +11,40 @@ $csrf_token=$_SESSION['csrf_token'];
 function validate_csrf_token($token){return isset($_SESSION['csrf_token'])&&hash_equals($_SESSION['csrf_token'],$token);}
 $blockPattern='/[<>\'\"\;#\*\\\\\/%]|javascript:/i';
 if((!empty($_SERVER['HTTP_HOST'])&&preg_match($blockPattern,$_SERVER['HTTP_HOST']))||(!empty($_SERVER['HTTP_USER_AGENT'])&&preg_match($blockPattern,$_SERVER['HTTP_USER_AGENT']))){http_response_code(400);exit('Invalid headers');}
-function is_url_safe($url){if(empty($url))return true;$url=trim($url);if(!filter_var($url,FILTER_VALIDATE_URL))return false;$scheme=strtolower(parse_url($url,PHP_URL_SCHEME));if(!in_array($scheme,['http','https']))return false;$host=parse_url($url,PHP_URL_HOST);if($host===false||$host===null)return false;if(preg_match('/[<>\'\"\;#\*\\\\\/%]|javascript:/i',$host))return false;return true;}
+
+function is_ip_private($ip){
+    if(filter_var($ip,FILTER_VALIDATE_IP,FILTER_FLAG_IPV4)){
+        $p=explode('.',$ip);
+        if(count($p)==4){
+            $a=(int)$p[0];$b=(int)$p[1];
+            if($a==10||$a==127||($a==172&&$b>=16&&$b<=31)||($a==192&&$b==168)||($a==169&&$b==254))return true;
+        }
+    }elseif(filter_var($ip,FILTER_VALIDATE_IP,FILTER_FLAG_IPV6)){
+        $ip=strtolower($ip);
+        if($ip==='::1'||strpos($ip,'fc00:')===0||strpos($ip,'fe80:')===0)return true;
+    }
+    return false;
+}
+function is_host_safe($host){
+    $ips=[];
+    $dns=@dns_get_record($host,DNS_A|DNS_AAAA);
+    if($dns){foreach($dns as$r){if(!empty($r['ip']))$ips[]=$r['ip'];if(!empty($r['ipv6']))$ips[]=$r['ipv6'];}}
+    else{if(filter_var($host,FILTER_VALIDATE_IP))$ips[]=$host;}
+    foreach($ips as$ip)if(is_ip_private($ip))return false;
+    return true;
+}
+function is_url_safe($url){
+    if(empty($url))return true;
+    $url=trim($url);
+    if(!filter_var($url,FILTER_VALIDATE_URL))return false;
+    $scheme=strtolower(parse_url($url,PHP_URL_SCHEME));
+    if(!in_array($scheme,['http','https']))return false;
+    $host=parse_url($url,PHP_URL_HOST);
+    if($host===false||$host===null)return false;
+    if(preg_match('/[<>\'\"\;#\*\\\\\/%]|javascript:/i',$host))return false;
+    if(!is_host_safe($host))return false;
+    return true;
+}
 if($_SERVER['REQUEST_METHOD']=='POST'&&isset($_POST['channel_action'])){
     if(!isset($_POST['csrf_token'])||!validate_csrf_token($_POST['csrf_token']))$error='CSRF error';
     else{
