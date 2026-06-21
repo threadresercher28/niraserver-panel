@@ -23,7 +23,7 @@ function is_TV_or_Player() {
         'Android MediaPlayer', 'Infuse', 'nPlayer', 'OPlayer', 'AVPlayer', 'CorePlayer',
         'M3U8 Player', 'M3U8Player', 'HLS Player', 'HLSPlayer', 'SMART-TV', 'Chromecast',
         'iptvnator', 'IPTVnator', 'Tizen', 'vlclib', 'IPTV', 'iptv',
-        'Android TV', 'TV', 'WebOS', 'Chrome', 'Player', '  Web0S'
+        'Android TV', 'TV', 'WebOS', 'Chrome', 'Player', 'Web0S'
     ];
     $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
 
