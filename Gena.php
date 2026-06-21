@@ -1,10 +1,5 @@
 <?php
-// GENA_PHP (fully patched)
 require_once __DIR__ . '/config.php';
-
-/**
- * Returns a validated stub URL from config constant or default
- */
 function get_stub_url($configKey, $defaultUrl) {
     if (defined($configKey)) {
         $url = constant($configKey);
